@@ -1,0 +1,27 @@
+{"properties": [
+  {
+    "name": "jwt.secret",
+    "type": "java.lang.String",
+    "description": "Secret key for encrypting JWT tokens"
+  },
+  {
+    "name": "jwt.token.validity",
+    "type": "java.lang.String",
+    "description": "Date in hours for token validity"
+  },
+  {
+    "name": "jwt.public.key",
+    "type": "java.lang.String",
+    "description": "A description for 'jwt.public.key'"
+  },
+  {
+    "name": "jwt.private.key",
+    "type": "java.lang.String",
+    "description": "A description for 'jwt.private.key'"
+  },
+  {
+    "name": "jwt.private.key",
+    "type": "java.lang.String",
+    "description": "A description for 'jwt.private.key'"
+  }
+]}
