@@ -7,6 +7,9 @@ import com.br.firesa.vpn.entity.User;
 import com.br.firesa.vpn.model.ServerTunnel;
 import com.br.firesa.vpn.security.keygen.CryptoUtil;
 
+import java.net.ServerSocket;
+import java.net.Socket;
+
 @Service
 public class VPNService {
 
@@ -17,7 +20,7 @@ public class VPNService {
         this.isRunning = false;
     }
 
-    // Método para iniciar a conexão VPN de forma assíncrona
+    // Método para iniciar a VPN de forma assíncrona
     @Async
     public void startVpnConnection(User user) {
         if (isRunning) {
@@ -28,28 +31,33 @@ public class VPNService {
         try {
             System.out.println("Iniciando o servidor VPN...");
 
-            // Cria o túnel do servidor com as chaves criptográficas do usuário
+            // Configura o túnel do servidor com as chaves do usuário
             serverTunnel = new ServerTunnel(
-                    CryptoUtil.convertBytesToPrivateKey(user.getServerPrivateKey()),
-                    CryptoUtil.convertBytesToPublicKey(user.getUserPublicKey())
+                CryptoUtil.convertBytesToPrivateKey(user.getServerPrivateKey()),
+                CryptoUtil.convertBytesToPublicKey(user.getUserPublicKey())
             );
 
-            // Inicia o servidor VPN em uma porta especificada
             isRunning = true;
             int serverPort = 9090; // Porta do servidor VPN
-            serverTunnel.start(serverPort);
 
-            // Indica que a VPN está em execução
+            // Inicia o socket do servidor para aceitar conexões de clientes
+            try (ServerSocket serverSocket = new ServerSocket(serverPort)) {
+                System.out.println("Aguardando conexão do cliente na porta " + serverPort);
 
-            // Executa a lógica de redirecionamento de tráfego em um thread separado
-            new Thread(() -> {
-                try {
-                    serverTunnel.handleTraffic(); // Processa o tráfego de rede
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    stopVpnConnection(); // Para a VPN caso ocorra um erro
-                }
-            }).start();
+                // Aceita a conexão do cliente
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("Cliente conectado: " + clientSocket.getInetAddress());
+
+                // Define o socket do cliente no ServerTunnel
+                serverTunnel.setClientSocket(clientSocket);
+
+                // Inicia o ServerTunnel
+                serverTunnel.start();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                stopVpnConnection();
+            }
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -57,7 +65,6 @@ public class VPNService {
         }
     }
 
-    // Método para parar a conexão VPN
     public void stopVpnConnection() {
         if (!isRunning) {
             System.out.println("VPN não está em execução.");
@@ -74,7 +81,6 @@ public class VPNService {
         }
     }
 
-    // Método opcional para verificar o status do servidor VPN
     public boolean isVpnRunning() {
         return isRunning;
     }

@@ -1,126 +1,134 @@
 package com.br.firesa.vpn.model;
 
-import java.net.ServerSocket;
+import one.papachi.tuntap4j.TunDevice;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.crypto.spec.SecretKeySpec;
 
 import com.br.firesa.vpn.security.keygen.CryptoUtil;
-import com.br.firesa.vpn.service.util.PacketParser;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class ServerTunnel {
 
-	private PrivateKey serverPrivateKey;
-	private PublicKey userPublicKey;
-	private SecretKeySpec aesKey;
+    private PrivateKey serverPrivateKey;
+    private PublicKey userPublicKey;
+    private SecretKeySpec aesKey;
+    private TunDevice tunDevice;
+    private ExecutorService threadPool;
 
-	private ServerSocket serverSocket;
-	private Socket clientSocket;
+    private Socket clientSocket; // Usaremos sockets padrão para comunicação
 
-	public ServerTunnel(PrivateKey serverPrivateKey, PublicKey userPublicKey) {
-		this.serverPrivateKey = serverPrivateKey;
-		this.userPublicKey = userPublicKey;
-	}
+    public ServerTunnel(PrivateKey serverPrivateKey, PublicKey userPublicKey) {
+        this.serverPrivateKey = serverPrivateKey;
+        this.userPublicKey = userPublicKey;
+        this.threadPool = Executors.newFixedThreadPool(2); // Para lidar com leitura/escrita
+    }
 
-	public void start(int port) throws Exception {
-		this.aesKey = CryptoUtil.generateSharedSecret(userPublicKey, serverPrivateKey);
-		serverSocket = new ServerSocket(port);
-		System.out.println("Servidor VPN iniciado na porta " + port);
+    // Inicia o servidor VPN
+    public void start() throws Exception {
+        // Gera a chave AES compartilhada usando ECDH
+        this.aesKey = CryptoUtil.generateSharedSecret(userPublicKey, serverPrivateKey);
 
-		clientSocket = serverSocket.accept();
-		System.out.println("Cliente Conectado");
-	}
+        // Inicializa a interface TUN
+        tunDevice = new TunDevice("tun0");
+        tunDevice.open();
+        tunDevice.setStatus(true);
+        tunDevice.setIPAddress("10.8.0.1", "255.255.255.0"); // Configura o IP da interface
 
-	// Método principal para gerenciar o tráfego de rede
-    public void handleTraffic() throws Exception {
-        while (true) {
-            byte[] encryptedPacket = receiveData();
-            if (encryptedPacket != null) {
-                // Descriptografar o pacote recebido
-                byte[] packet = CryptoUtil.decryptData(encryptedPacket, aesKey);
+        System.out.println("Interface TUN iniciada como 'tun0'.");
 
-                // Redirecionar o pacote para o destino correto (com a porta correta)
-                byte[] responsePacket;
-                int protocol = PacketParser.getProtocol(packet);
-
-                if (protocol == 6) { // TCP
-                    responsePacket = PacketParser.forwardTcpPacketToInternet(packet);
-                } else if (protocol == 17) { // UDP
-                    responsePacket = PacketParser.forwardUdpPacketToInternet(packet);
-                } else {
-                    System.out.println("Protocolo não suportado: " + protocol);
-                    continue;
-                }
-
-                // Enviar a resposta criptografada de volta para o cliente
-                sendData(responsePacket);
-            }
+        // Aguarda a conexão do cliente (implemente o socket do servidor em outro lugar)
+        // Aqui, assumimos que o socket do cliente já está conectado
+        if (clientSocket != null) {
+            System.out.println("Cliente conectado.");
+            handleTraffic();
+        } else {
+            System.out.println("Nenhum cliente se conectou.");
         }
     }
-    
- // Método principal para gerenciar o tráfego de rede de forma assíncrona
-    public CompletableFuture<Void> handleTrafficAsync() {
-        return CompletableFuture.runAsync(() -> {
-            try {
-                while (true) {
-                    byte[] encryptedPacket = receiveData();
-                    if (encryptedPacket != null) {
-                        byte[] packet = CryptoUtil.decryptData(encryptedPacket, aesKey);
-                        byte[] responsePacket;
-                        int protocol = PacketParser.getProtocol(packet);
 
-                        if (protocol == 6) { // TCP
-                            responsePacket = PacketParser.forwardTcpPacketToInternet(packet);
-                        } else if (protocol == 17) { // UDP
-                            responsePacket = PacketParser.forwardUdpPacketToInternet(packet);
-                        } else {
-                            System.out.println("Protocolo não suportado: " + protocol);
-                            continue;
-                        }
+    // Define o socket do cliente (pode ser chamado pelo VPNService)
+    public void setClientSocket(Socket clientSocket) {
+        this.clientSocket = clientSocket;
+    }
 
-                        sendData(responsePacket);
-                    }
+    // Método para lidar com o tráfego entre a interface TUN e o cliente
+    public void handleTraffic() {
+        // Inicia as threads para leitura e escrita
+        threadPool.execute(() -> {
+			try {
+				readFromTun();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		});
+        threadPool.execute(this::readFromClient);
+    }
+
+    // Lê pacotes da interface TUN e envia para o cliente
+    private void readFromTun() throws IOException {
+        ByteBuffer buffer = ByteBuffer.allocate(tunDevice.getMTU());
+        try (OutputStream out = clientSocket.getOutputStream()) {
+            while (true) {
+                buffer.clear();
+                int bytesRead = tunDevice.read(buffer);
+                if (bytesRead > 0) {
+                    buffer.flip();
+                    byte[] packet = new byte[bytesRead];
+                    buffer.get(packet);
+
+                    // Criptografa o pacote antes de enviar
+                    byte[] encryptedPacket = CryptoUtil.encryptData(packet, aesKey);
+
+                    // Envia o pacote criptografado para o cliente
+                    out.write(encryptedPacket);
+                    out.flush();
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
             }
-        });
+        } catch (Exception e) {
+            System.err.println("Erro ao ler da interface TUN: " + e.getMessage());
+        }
     }
 
-	public void sendData(byte[] data) throws Exception {
-		byte[] encriptedData = CryptoUtil.encryptData(data, aesKey);
-		clientSocket.getOutputStream().write(encriptedData);
-		clientSocket.getOutputStream().flush();
-	}
+    // Lê pacotes do cliente e escreve na interface TUN
+    private void readFromClient() {
+        try (InputStream in = clientSocket.getInputStream()) {
+            byte[] buffer = new byte[2048]; // Tamanho adequado para pacotes IP
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                // Descriptografa o pacote recebido
+                byte[] encryptedPacket = new byte[bytesRead];
+                System.arraycopy(buffer, 0, encryptedPacket, 0, bytesRead);
 
-	public byte[] receiveData() throws Exception {
-		byte[] buffer = new byte[4096];
-		int bytesRead = clientSocket.getInputStream().read(buffer);
+                byte[] packet = CryptoUtil.decryptData(encryptedPacket, aesKey);
 
-		if (bytesRead != -1) {
-			byte[] encryptedDataWithIv = new byte[bytesRead];
-			System.arraycopy(buffer, 0, encryptedDataWithIv, 0, bytesRead);
-
-			return CryptoUtil.decryptData(encryptedDataWithIv, aesKey);
-		}
-
-		return null;
-	}
-
-	public void close() throws Exception {
-        clientSocket.close();
-        serverSocket.close();
-        System.out.println("Conexão encerrada.");
+                // Escreve o pacote na interface TUN
+                ByteBuffer packetBuffer = ByteBuffer.wrap(packet);
+                tunDevice.write(packetBuffer);
+            }
+        } catch (Exception e) {
+            System.err.println("Erro ao ler do cliente: " + e.getMessage());
+        }
     }
 
+    // Fecha conexões e recursos
+    public void close() throws Exception {
+        if (clientSocket != null && !clientSocket.isClosed()) {
+            clientSocket.close();
+        }
+        if (tunDevice != null) {
+            tunDevice.close();
+        }
+        threadPool.shutdownNow();
+        System.out.println("Conexão VPN encerrada.");
+    }
 }
