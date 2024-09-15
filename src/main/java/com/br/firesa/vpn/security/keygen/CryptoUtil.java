@@ -7,6 +7,7 @@ import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
@@ -19,6 +20,9 @@ public class CryptoUtil {
 	private static final int IV_LENGTH = 12; // 96 bits, recomendado para GCM
 
 	public static byte[] encryptData(byte[] data, SecretKeySpec aesKey) throws Exception {
+		MessageDigest md = MessageDigest.getInstance("SHA-256");
+		byte[] hashOriginal = md.digest(data);
+		System.out.println("Hash dos dados originais: " + Base64.getEncoder().encodeToString(hashOriginal));
 		// Gera um IV seguro
 		byte[] iv = new byte[IV_LENGTH];
 		SecureRandom random = new SecureRandom();
@@ -49,6 +53,11 @@ public class CryptoUtil {
 		Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
 		GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
 		cipher.init(Cipher.DECRYPT_MODE, aesKey, gcmSpec);
+		
+		MessageDigest md = MessageDigest.getInstance("SHA-256");
+		byte[] decryptedData = cipher.doFinal(encryptedData);
+		byte[] hashDescriptografado = md.digest(decryptedData);
+		System.out.println("Hash dos dados descriptografados: " + Base64.getEncoder().encodeToString(hashDescriptografado));
 
 		// Descriptografar os dados
 		return cipher.doFinal(encryptedData);
