@@ -9,12 +9,15 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
 
 import com.br.firesa.vpn.dtos.LoginRequest;
 import com.br.firesa.vpn.dtos.LoginResponse;
 import com.br.firesa.vpn.entity.User;
 import com.br.firesa.vpn.security.jwt.JwtTokenUtil;
 import com.br.firesa.vpn.security.keygen.KeyGeneratorUtil;
+import com.br.firesa.vpn.validation.AoAlterar;
+import com.br.firesa.vpn.validation.AoInserir;
 
 import jakarta.transaction.Transactional;
 
@@ -34,6 +37,7 @@ public class UserAuthenticationService {
 	@Autowired
 	private AuthenticationManager authenticationManager;
 	
+	@Validated(AoAlterar.class)
 	public LoginResponse login(LoginRequest userLoginRequest) throws Exception {
 		authenticate(userLoginRequest.getUsername(), userLoginRequest.getPassword());
 		User user = userService.findByUsername(userLoginRequest.getUsername());
@@ -46,6 +50,8 @@ public class UserAuthenticationService {
 		user.setServerPrivateKey(KeyGeneratorUtil.getEncodedPrivateKey(serverKeyPair));
 		user.setServerPublicKey(KeyGeneratorUtil.getEncodedPublicKey(serverKeyPair));
 		
+		userService.update(user);
+		
 //		Set<Role> roles = user.getAuthorities().stream()
 //				.map(grantedAuthority -> new Role(grantedAuthority.getAuthority())).collect(Collectors.toSet());
 		
@@ -54,6 +60,7 @@ public class UserAuthenticationService {
 		return new LoginResponse(user, jwt);
 	}
 	
+	@Validated(AoInserir.class)
 	public User register(User user) {
 		user.setPassword(passwordEncoder.encode(user.getPassword()));
 		return userService.insert(user);

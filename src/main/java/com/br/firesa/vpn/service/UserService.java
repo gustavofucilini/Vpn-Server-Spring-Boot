@@ -5,9 +5,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
 
 import com.br.firesa.vpn.entity.User;
 import com.br.firesa.vpn.repository.UserRepository;
+import com.br.firesa.vpn.validation.AoAlterar;
+import com.br.firesa.vpn.validation.AoInserir;
 
 import jakarta.transaction.Transactional;
 
@@ -17,7 +20,13 @@ public class UserService implements UserDetailsService {
 	@Autowired
 	private UserRepository userRepository;
 	
+	@Validated(AoInserir.class)
 	public User insert(User user) {
+		return userRepository.save(user);
+	}
+
+	@Validated(AoAlterar.class)
+	public User update(User user) {
 		return userRepository.save(user);
 	}
 	

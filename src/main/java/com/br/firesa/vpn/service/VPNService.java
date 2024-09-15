@@ -32,10 +32,7 @@ public class VPNService {
             System.out.println("Iniciando o servidor VPN...");
 
             // Configura o túnel do servidor com as chaves do usuário
-            serverTunnel = new ServerTunnel(
-                CryptoUtil.convertBytesToPrivateKey(user.getServerPrivateKey()),
-                CryptoUtil.convertBytesToPublicKey(user.getUserPublicKey())
-            );
+            serverTunnel = new ServerTunnel(CryptoUtil.convertBytesToPrivateKey(user.getServerPrivateKey()), CryptoUtil.convertBytesToPublicKey(user.getUserPublicKey()));
 
             isRunning = true;
             int serverPort = 9090; // Porta do servidor VPN

@@ -1,8 +1,7 @@
 package com.br.firesa.vpn.security.keygen;
 
-import java.security.InvalidKeyException;
 import java.security.KeyFactory;
-import java.security.NoSuchAlgorithmException;
+import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
@@ -55,19 +54,17 @@ public class CryptoUtil {
 		return cipher.doFinal(encryptedData);
 	}
 
-	public static SecretKeySpec generateSharedSecret(PublicKey clientPublicKey, PrivateKey serverPrivateKey)
-			throws NoSuchAlgorithmException {
-		KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH");
-		try {
-			keyAgreement.init(serverPrivateKey);
-			keyAgreement.doPhase(clientPublicKey, true);
-			byte[] sharedSecret = keyAgreement.generateSecret();
+	public static SecretKeySpec generateSharedSecret(PublicKey otherPartyPublicKey, PrivateKey ownPrivateKey) throws Exception {
+	    KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH");
+	    keyAgreement.init(ownPrivateKey);
+	    keyAgreement.doPhase(otherPartyPublicKey, true);
+	    byte[] sharedSecret = keyAgreement.generateSecret();
 
-			return new SecretKeySpec(sharedSecret, 0, 16, "AES");
-		} catch (InvalidKeyException e) {
-			e.printStackTrace();
-			return null;
-		}
+	    // Opcionalmente, você pode derivar a chave AES usando SHA-256
+	    MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+	    byte[] aesKeyBytes = sha256.digest(sharedSecret);
+
+	    return new SecretKeySpec(aesKeyBytes, "AES");
 	}
 
 	public static PrivateKey convertBytesToPrivateKey(byte[] privateKeyBytes) throws Exception {
